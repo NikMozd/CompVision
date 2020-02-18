@@ -18,6 +18,7 @@ namespace Task1
         public Form1()
         {
             InitializeComponent();
+            pictureBox3.Image = new Bitmap(pictureBox3.Width + 1, pictureBox3.Height + 1);
         }
 
         private byte[] GetImageBytes()
@@ -155,7 +156,105 @@ namespace Task1
 
             var bytesNew = bytes.Select(b => (byte)(hist[b] * 255)).ToArray();
             SetImageBytes(bytesNew);
+        }
+
+        List<PointF> points = new List<PointF>();
+
+        private void button8_Click(object sender, EventArgs e)
+        {
+            if (points.Count == 0)
+                throw new Exception("Пустой список точек");
+            points = points.OrderBy(p => p.X).ToList();
+
+            Func<byte, byte> convert;
+            switch (listBox2.SelectedIndex)
+            {
+                case 0:
+                    ProcessLinear(out convert);
+                    break;
+                case 1:
+                    ProcessSpline(out convert);
+                    break;
+                default:
+                    throw new Exception("Нереализованный вид преобразования");
+            }
+
+            var bytes = GetImageBytes();
+            var bytesNew = bytes.Select(b => convert(b)).ToArray();
+            SetImageBytes(bytesNew);
+        }
+
+        private void ProcessLinear(out Func<byte, byte> func)
+        {
+            var g = pictureBox3.CreateGraphics();
+            var pen = new Pen(Color.Red, 2);
+            var prev = new PointF(0, 0);
+            foreach(var point in points)
+            {
+                g.DrawLine(pen,
+                    prev.X * pictureBox3.Width, (1 - prev.Y) * pictureBox3.Height,
+                    point.X * pictureBox3.Width, (1 - point.Y) * pictureBox3.Height);
+                prev = point;
+            }
+            g.DrawLine(pen,
+                prev.X * pictureBox3.Width, (1 - prev.Y) * pictureBox3.Height,
+                pictureBox3.Width, 0);
+
+            var pointsToCount = new List<PointF>() { new PointF(0, 0) };
+            pointsToCount.AddRange(points);
+            pointsToCount.Add(new PointF(1, 1));
+            func = bt =>
+            {
+                var arg = bt / 255f;
+                var left = pointsToCount.Last(pt => pt.X <= arg);
+                var right = pointsToCount.First(pt => pt.X >= arg);
+                var val = left.Y + (right.Y - left.Y) * (arg - left.X) / (right.X - left.X);
+                return (byte)Math.Min(255, val * 255);
+            };
+        }
+
+        private void ProcessSpline(out Func<byte, byte> func)
+        {
+            //var bmp = pictureBox3.Image as Bitmap;
+            var g = pictureBox3.CreateGraphics();
+            var pen = new Pen(Color.Red, 2);
+
+            var pointsToCount = new List<PointF>() { new PointF(0, 0) };
+            pointsToCount.AddRange(points);
+            pointsToCount.Add(new PointF(1, 1));
+            var dic = pointsToCount.ToDictionary(p => (double)p.X, p => (double)p.Y);
+            var interpol = new SplineInterpolator(dic);
             
+            foreach (var b in Enumerable.Range(0, 256))
+            {
+                var arg = b / 255f;
+                var pt = new Point((int)(arg * pictureBox3.Width), (int)((1 - interpol.GetValue(arg)) * pictureBox3.Height));
+                //bmp.SetPixel(pt.X, pt.Y, Color.Red);
+                g.DrawLine(pen, pt.X, pt.Y, pt.X + 1, pt.Y + 1);
+            }
+
+            func = bt =>
+            {
+                var arg = bt / 255f;
+                var val = interpol.GetValue(arg);
+                return (byte)Math.Min(255, val * 255);
+            };
+        }
+
+        private void button9_Click(object sender, EventArgs e)
+        {
+            pictureBox3.Image = null;
+            points.Clear();
+        }
+
+        private void pictureBox3_Click(object sender, EventArgs e)
+        {
+            var position = (e as MouseEventArgs).Location;
+            var x = position.X / (float)pictureBox3.Size.Width;
+            var y = 1 - position.Y / (float)pictureBox3.Size.Height;
+
+            points.Add(new PointF(x, y));
+            pictureBox3.CreateGraphics().FillEllipse(new SolidBrush(Color.Blue), position.X - 3, position.Y - 1, 7, 7);
         }
     }
 }
