@@ -129,5 +129,33 @@ namespace Task1
             var bytesNew = bytes.Select(b => convert(b)).ToArray();
             SetImageBytes(bytesNew);
         }
+
+        private void button4_Click(object sender, EventArgs e)
+        {
+            var bytes = GetImageBytes();
+            var min = bytes.Where(b => b != 0).Min();
+            var max = bytes.Max();
+            var bytesNew = bytes.Select(b => (byte)(((double)b - min) / (max - min) * 255)).ToArray();
+            SetImageBytes(bytesNew);
+        }
+
+        private void button5_Click(object sender, EventArgs e)
+        {
+            var bytes = GetImageBytes();
+            var hist = new double[256];
+            foreach (var b in bytes)
+                hist[b]++;
+
+            hist[0] /= bytes.Length;
+            for (int i = 1; i < 256; ++i)
+            {
+                hist[i] /= bytes.Length;
+                hist[i] += hist[i - 1];
+            }
+
+            var bytesNew = bytes.Select(b => (byte)(hist[b] * 255)).ToArray();
+            SetImageBytes(bytesNew);
+            
+        }
     }
 }
