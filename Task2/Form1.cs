@@ -248,5 +248,16 @@ namespace Task2
             var bytesNew = bytes.Select(b => (byte)(thresholds.FindLastIndex(t => t <= b) % 2 == 0 ? 0 : 255)).ToArray();
             SetImageBytes(bytesNew);
         }
+
+        private void button10_Click(object sender, EventArgs e)
+        {
+            if (!int.TryParse(textBox6.Text, out var levels) || levels < 2)
+                throw new ArgumentException("Неправильное число уровней");
+
+            var bytes = GetImageBytesGray();
+            var step = 256 / levels;
+            var bytesNew = bytes.Select(b => (byte)Math.Min(255, step * (b / step + 1))).ToArray();
+            SetImageBytes(bytesNew);
+        }
     }
 }
