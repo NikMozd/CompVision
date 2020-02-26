@@ -15,9 +15,6 @@ namespace Task2
         private System.Drawing.Imaging.BitmapData bmpData;
         private int bytesCount;
 
-        private const int segmentCountWidth = 3;
-        private const int segmentCountHeight = 2;
-
         public Form1()
         {
             InitializeComponent();
@@ -63,7 +60,7 @@ namespace Task2
         private void SetImageBytes(byte[] bytes)
         {
             var bmp = (Bitmap)pictureBox2.Image;
-            System.Runtime.InteropServices.Marshal.Copy(bytes, 0, bmpData.Scan0, bytesCount);
+            System.Runtime.InteropServices.Marshal.Copy(bytes, 0, bmpData.Scan0, bytes.Length);
             bmp.UnlockBits(bmpData);
         }
 
@@ -136,15 +133,25 @@ namespace Task2
             SetImageBytes(bytesNew);
         }
 
-        private void button7_Click(object sender, EventArgs e)
+        private byte[] Otsu(byte[] bytes)
         {
-            var bytes = GetImageBytesGray();
+            var hist = GetHistogram(bytes);
+            var threshold = GetOtsuThreshold(hist);
+            var bytesNew = bytes.Select(b => (byte)(b >= threshold ? 255 : 0)).ToArray();
+            return bytesNew;
+        }
+
+        private double[] GetHistogram(byte[] bytes)
+        {
             var hist = new double[256];
             foreach (var b in bytes)
                 hist[b]++;
-            
-            hist = hist.Select(h => h / bytes.Length).ToArray();
-            
+
+            return hist.Select(h => h / bytes.Length).ToArray();
+        }
+
+        private byte GetOtsuThreshold(double[] hist)
+        {
             var psum = new double[256];
             var msum = new double[256];
             psum[0] = hist[0];
@@ -164,12 +171,23 @@ namespace Task2
             }
 
             var threshold = sigma.ToList().IndexOf(sigma.Max());
-            var bytesNew = bytes.Select(b => (byte)(b >= threshold ? 255 : 0)).ToArray();
+            return (byte)threshold;
+        }
+
+        private void button7_Click(object sender, EventArgs e)
+        {
+            var bytes = GetImageBytesGray();
+            var bytesNew = Otsu(bytes);
             SetImageBytes(bytesNew);
         }
 
         private void button8_Click(object sender, EventArgs e)
         {
+            if (!int.TryParse(textBox3.Text, out var segmentCountWidth) || segmentCountWidth < 1)
+                throw new ArgumentException("Неправильное число блоков по-горизонтали");
+            if (!int.TryParse(textBox4.Text, out var segmentCountHeight) || segmentCountHeight < 1)
+                throw new ArgumentException("Неправильное число блоков по-вертикали");
+
             var bytes = GetImageBytesGray();
             List<byte>[] segments = new List<byte>[6];
             for (int i = 0; i < 6; ++i)
@@ -184,7 +202,51 @@ namespace Task2
                 Value = b
             });
 
-            // ?????
+            var bytesArrays = new byte[segmentCountHeight, segmentCountWidth][];
+            for (int i = 0; i < segmentCountHeight; ++i)
+                for (int j = 0; j < segmentCountWidth; ++j)
+                {
+                    var segment = tmp.Where(tp => tp.Row == i && tp.Column == j).Select(tp => tp.Value).ToArray();
+                    var segmentNew = Otsu(segment);
+                    bytesArrays[i, j] = segmentNew;
+                }
+
+            var bytesNew = new List<byte>(bytes.Length);
+            for (int i = 0; i < segmentCountHeight * height; ++i)
+                for (int j = 0; j < segmentCountWidth; ++j)
+                    bytesNew.AddRange(bytesArrays[i / height, j].Skip((i % height) * width).Take(width));
+
+            SetImageBytes(bytesNew.ToArray());
+        }
+
+        private void button9_Click(object sender, EventArgs e)
+        {
+            if (!int.TryParse(textBox5.Text, out var depth) || depth < 1)
+                throw new ArgumentException("Неправильная глубина");
+
+            var bytes = GetImageBytesGray();
+            var hist = GetHistogram(bytes);
+            var thresholds = new List<byte> { 0, 255 };
+
+            for (int counter = 0; counter < depth; ++counter)
+            {
+                var thresholdsNew = new List<byte>();
+                var fst = thresholds.First();
+                foreach (var snd in thresholds.Skip(1))
+                {
+                    var histTemp = GetHistogram(bytes.Where(b => fst <= b && b <= snd).ToArray());
+                    var thresholdTemp = GetOtsuThreshold(histTemp);
+                    if (thresholdTemp != fst && thresholdTemp != snd)
+                        thresholdsNew.Add(thresholdTemp);
+                    fst = snd;
+                }
+
+                thresholds.AddRange(thresholdsNew);
+                thresholds.Sort();
+            }
+
+            var bytesNew = bytes.Select(b => (byte)(thresholds.FindLastIndex(t => t <= b) % 2 == 0 ? 0 : 255)).ToArray();
+            SetImageBytes(bytesNew);
         }
     }
 }
